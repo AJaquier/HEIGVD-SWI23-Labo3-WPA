@@ -37,6 +37,17 @@ Dans cette première partie, vous allez récupérer le script **Python3** [wpa\_
 - Ouvrir le fichier de capture [wpa\_handshake.cap](files/wpa_handshake.cap) avec Wireshark
 - Exécuter le script avec ```python3 wpa_key_derivation.py```
 - Essayer d’identifier les valeurs affichées par le script dans la capture Wireshark
+
+> Réponse :
+```
+  `SSID` : Dans *IEEE 802.11 Wireless Management -> Tagged Parameters -> SSID parameter set*
+  `AP Mac` : Dans l'adresse de la trame
+  `Client Mac` : Dans l'adresse de la trame
+  `AP Nonce` : Dans la première trame du 4-way handshake (*802.1X Authentication -> WPA Key Nonce*)
+  `Client Nonce` : Idem que `AP Nonce` mais dans la deuxième trame du 4-way handshake
+  `MIC` : Dans la quatrième trame du 4-way handshake (*802.1X Authentication -> WPA Key MIC*)
+```
+
 - Analyser le fonctionnement du script. En particulier, __faire attention__ à la variable ```data``` qui contient la payload de la trame et la comparer aux données de la quatrième trame du 4-way handshake. Lire [la fin de ce document](#quelques-éléments-à-considérer-) pour l’explication de la différence.
 - __Modifier le script__ pour qu’il récupère automatiquement, à partir de la capture, les valeurs qui se trouvent actuellement codées en dur (```ssid```, ```APmac```, ```Clientmac```, nonces…) 
 

