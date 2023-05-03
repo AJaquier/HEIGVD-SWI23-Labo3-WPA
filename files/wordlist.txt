@@ -2,7 +2,6 @@
 11111111
 123456789
 marseille
-admin123
 1234567891
 password
 newfred1964
@@ -663,6 +662,7 @@ panasonic
 actuelle
 carambar
 gladiator
+admin123
 19831983
 samsung1
 mendoza1
