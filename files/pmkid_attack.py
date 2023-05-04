@@ -4,17 +4,14 @@
 """
 Derive WPA keys from Passphrase and 4-way handshake infomamba
 
-Calcule un MIC d'authentification (le MIC pour la transmission de données
-utilise l'algorithme Michael. Dans ce cas-ci, l'authentification, on utilise
-sha-1 pour WPA2 ou MD5 pour WPA)
+Calcule un PMKID à partir des paramètres d'un handshake 4-way et 
+essaye de cracker le mot de passe à l'aide d'un dictionnaire
 """
 
-__author__ = "Abraham Rubinstein et Yann Lederrey"
-__copyright__ = "Copyright 2017, HEIG-VD"
-__license__ = "GPL"
-__version__ = "1.0"
-__email__ = "abraham.rubinstein@heig-vd.ch"
-__status__ = "Prototype"
+__author__      = "Géraud Silvestri, Alexandre Jaquier, Francis Monti"
+__copyright__   = "Copyright 2023, HEIG-VD"
+__license__ 	= "GPL"
+__version__ 	= "1.0"
 
 import sys
 import hmac, hashlib
@@ -22,22 +19,6 @@ from binascii import a2b_hex
 from tqdm.rich import tqdm
 from pbkdf2 import *
 from scapy.all import *
-
-
-def customPRF512(key, A, B):
-    """
-    This function calculates the key expansion from the 256 bit PMK to the 512 bit PTK
-    """
-    blen = 64
-    i = 0
-    R = b""
-    while i <= ((blen * 8 + 159) / 160):
-        hmacsha1 = hmac.new(
-            key, A + str.encode(chr(0x00)) + B + str.encode(chr(i)), hashlib.sha1
-        )
-        i += 1
-        R = R + hmacsha1.digest()
-    return R[:blen]
 
 def get_handshake_params(pcap_file: str, ap_mac_prefix: str):
   """Grab the handshake parameters from a pcap file and an AP MAC prefix. If no AP MAC prefix is provided, the first handshake found in the pcap will be used.
@@ -53,8 +34,10 @@ def get_handshake_params(pcap_file: str, ap_mac_prefix: str):
       bytes: PMKID
   """
 
+  print("Reading pcap file...")
   capture = rdpcap(pcap_file)
 
+  print ("Looking for 4-way handshake...")
   # Check for start of handshake
   for i in range(0, len(capture)):
       if capture[i].type == 2 and capture[i].subtype == 8:
@@ -88,6 +71,7 @@ def get_handshake_params(pcap_file: str, ap_mac_prefix: str):
   ap_mac_prefix = a2b_hex(capture[i].addr2.replace(":", ""))
   client_mac = a2b_hex(capture[i].addr1.replace(":", ""))
 
+  print ("Looking for SSID.in beacon frames..")
   # Get the SSID by checking the beacon frames before the handshake and looking for the same AP MAC address
   for j in range(0, i):
       # Check if it is a beacon frame
